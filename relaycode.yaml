@@ -18,7 +18,6 @@ steps:
     google:
       service_account_info: ${connections['gcp']['GCPconnection']}
       zone: ${parameters.GCPzone}
-
 - name: approval
   description: Wait for approval
   type: approval
@@ -26,7 +25,6 @@ steps:
   - gcp-step-instance-list
   - aws-ec2-step-instances-describe
   - azure-virtual-machines-step-vm-list
-
 - name: gcp-step-instance-stop
   image: relaysh/gcp-step-instance-stop
   spec:
@@ -35,14 +33,12 @@ steps:
       zone: ${parameters.GCPzone}
     instances: ${outputs.'gcp-step-instance-list'.'instances'}
   dependsOn: approval
-
 - name: approval1
   description: Wait for approval
   type: approval
   dependsOn:
   - gcp-step-instance-stop
-  - aws-ec2-step-instances-stop
-
+  - aws-stop-instances
 - name: gcp-step-instance-start
   image: relaysh/gcp-step-instance-start
   spec:
@@ -51,23 +47,30 @@ steps:
       zone: ${parameters.GCPzone}
     instances: ${outputs.'gcp-step-instance-list'.'instances'}
   dependsOn: approval1
-
 - name: aws-ec2-step-instances-describe
   image: relaysh/aws-ec2-step-instances-describe
   spec:
     aws:
-      connection: ${connections['aws']['aws-account']}
-      region: ${parameters.AWSregion}
-
-- name: aws-ec2-step-instances-stop
+     &aws
+      connection:
+        !Connection { type: aws, name: aws-account }
+      region: !Parameter AWSregion
+  
+- name: aws-filter-instances
+  image: relaysh/core:latest-python
+  spec:
+    instances:
+      !Output { from: aws-ec2-step-instances-describe, name: instances }
+  inputFile: https://raw.githubusercontent.com/atlgithub2308/filter-aws-instance/main/filter.py
+  dependsOn: approval
+  
+- name: aws-stop-instances
+  dependsOn: aws-filter-instances
   image: relaysh/aws-ec2-step-instances-stop
   spec:
-    aws:
-      connection: ${connections['aws']['aws-account']}
-      region: ${parameters.AWSregion}
-    instanceIDs: [ 'i-09c6ae1ffb52bc579' ]
-  dependsOn: approval
-
+    aws: *aws
+    instanceIDs:
+      !Output { from: aws-filter-instances, name: instanceIDs }
 - name: azure-virtual-machines-step-vm-list
   image: relaysh/azure-virtual-machines-step-vm-list
   spec:
